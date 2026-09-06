@@ -50,29 +50,31 @@
 
 body {
   font-family: var(--font-geist-sans), Arial, Helvetica, sans-serif;
+  letter-spacing: -0.006em;
   background:
-    radial-gradient(circle at 12% -10%, rgb(18 166 154 / 8%), transparent 28rem),
+    radial-gradient(circle at 12% -10%, rgb(39 99 91 / 6%), transparent 32rem),
+    linear-gradient(to bottom, transparent, rgb(47 95 90 / 1.8%)),
     var(--background);
 }
 
 :root {
-  --background: oklch(0.975 0.006 188);
+  --background: oklch(0.977 0.004 160);
   --foreground: oklch(0.22 0.025 215);
-  --card: oklch(0.995 0.002 190);
+  --card: oklch(0.996 0.001 180);
   --card-foreground: oklch(0.22 0.025 215);
   --popover: oklch(1 0 0);
   --popover-foreground: oklch(0.145 0 0);
-  --primary: oklch(0.31 0.06 210);
+  --primary: oklch(0.36 0.055 185);
   --primary-foreground: oklch(0.985 0 0);
-  --secondary: oklch(0.94 0.025 190);
+  --secondary: oklch(0.94 0.015 165);
   --secondary-foreground: oklch(0.31 0.06 210);
-  --muted: oklch(0.95 0.008 205);
+  --muted: oklch(0.948 0.006 165);
   --muted-foreground: oklch(0.5 0.025 215);
   --accent: oklch(0.97 0 0);
   --accent-foreground: oklch(0.205 0 0);
   --destructive: oklch(0.577 0.245 27.325);
-  --border: oklch(0.89 0.012 205);
-  --input: oklch(0.89 0.012 205);
+  --border: oklch(0.9 0.008 165);
+  --input: oklch(0.9 0.008 165);
   --ring: oklch(0.58 0.11 185);
   --chart-1: oklch(0.67 0.14 170);
   --chart-2: oklch(0.72 0.15 75);
@@ -88,6 +90,51 @@ body {
   --sidebar-accent-foreground: oklch(0.205 0 0);
   --sidebar-border: oklch(0.922 0 0);
   --sidebar-ring: oklch(0.708 0 0);
+}
+
+.hero-panel {
+  background:
+    linear-gradient(118deg, rgb(28 63 61 / 99%), rgb(45 86 82 / 97%)),
+    var(--primary);
+}
+
+.section-kicker {
+  color: color-mix(in oklab, var(--primary), transparent 28%);
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+}
+
+.score-ring {
+  --score-angle: 0deg;
+  display: grid;
+  width: 172px;
+  height: 172px;
+  place-items: center;
+  border-radius: 999px;
+  background: conic-gradient(var(--primary) var(--score-angle), var(--muted) 0deg);
+  box-shadow: inset 0 0 0 1px rgb(255 255 255 / 70%);
+}
+
+.score-ring-inner {
+  display: flex;
+  width: 142px;
+  height: 142px;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  background: var(--card);
+  box-shadow: 0 4px 20px rgb(20 53 49 / 8%);
+}
+
+pre {
+  scrollbar-color: color-mix(in oklab, var(--primary), transparent 70%) transparent;
+  scrollbar-width: thin;
+}
+
+::selection {
+  background: color-mix(in oklab, var(--primary), transparent 82%);
 }
 
 .dark {

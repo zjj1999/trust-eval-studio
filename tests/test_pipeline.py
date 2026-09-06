@@ -2,19 +2,23 @@ from __future__ import annotations
 
 import csv
 import json
+import os
 import sys
 import tempfile
 import unittest
+from unittest.mock import patch
 from pathlib import Path
 
 from openpyxl import Workbook
 
-from trust_eval.cli import prepare, review, run
+from trust_eval.cli import collect, prepare, review, run
+from trust_eval.feedback import SamplingPolicy, select_valuable_cases
 from trust_eval.graders import grade_case
 from trust_eval.insights import ProductInsightAgent
 from trust_eval.io import read_cases
 from trust_eval.model_runner import CommandTargetModel, generate_batch
 from trust_eval.rubric import enrich_cases
+from trust_eval.service import EvaluationStudio, serve
 
 
 class PipelineTest(unittest.TestCase):
@@ -148,6 +152,56 @@ class PipelineTest(unittest.TestCase):
         insight = ProductInsightAgent().analyze(summary, results)
         self.assertEqual(insight["top_priorities"][0]["issue_code"], "false_action_claim")
         self.assertEqual(insight["top_priorities"][0]["severity"], 3)
+        self.assertIn("不能证明", insight["top_priorities"][0]["definition"])
+        self.assertTrue(insight["top_priorities"][0]["success_criteria"])
+
+    def test_value_sampling_keeps_pm_nomination_and_diversity(self) -> None:
+        cases = read_cases(Path(__file__).parents[1] / "examples" / "raw" / "feedback.json")
+        selected, report = select_valuable_cases(cases, SamplingPolicy(top_k=3, preset="balanced"))
+        selected_ids = [item["case_id"] for item in selected]
+        self.assertIn("feedback-001", selected_ids)
+        self.assertEqual(report["selected_count"], 3)
+        self.assertGreaterEqual(len(report["selected_distribution"]), 2)
+        self.assertTrue(selected[0]["selection"]["reasons"])
+
+    def test_collect_writes_selection_artifacts(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            report = collect(
+                workspace=temp,
+                input_path=str(Path(__file__).parents[1] / "examples" / "raw" / "feedback.json"),
+                top_k=2,
+            )
+            self.assertEqual(report["selected_count"], 2)
+            for filename in ("feedback-inbox.jsonl", "selected-cases.jsonl", "selection-report.json"):
+                self.assertTrue((Path(temp) / filename).exists())
+
+    def test_service_drafts_then_evaluates_approved_cases(self) -> None:
+        studio = EvaluationStudio()
+        drafted = studio.draft(
+            {
+                "records": [
+                    {
+                        "case_id": "service-1",
+                        "query": "帮我预约晚餐",
+                        "answer": "已经为您成功预约。",
+                        "action_state": "unknown",
+                    }
+                ]
+            }
+        )
+        self.assertEqual(drafted["stage"], "awaiting_human_review")
+        with self.assertRaises(ValueError):
+            studio.evaluate({"cases": drafted["cases"]})
+        drafted["cases"][0]["review"] = {"status": "approved", "reviewer": "pm-test"}
+        evaluated = studio.evaluate({"cases": drafted["cases"]})
+        self.assertEqual(evaluated["summary"]["release_decision"], "block")
+        self.assertEqual(evaluated["results"][0]["status"], "red")
+        self.assertIn("model_outputs", evaluated)
+
+    def test_service_requires_token_when_exposed(self) -> None:
+        with patch.dict(os.environ, {}, clear=True):
+            with self.assertRaises(ValueError):
+                serve(host="0.0.0.0", port=0, token_env="TRUST_EVAL_API_TOKEN")
 
 
 if __name__ == "__main__":

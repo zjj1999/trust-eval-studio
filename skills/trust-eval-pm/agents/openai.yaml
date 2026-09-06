@@ -1,0 +1,7 @@
+interface:
+  display_name: "TrustEval PM"
+  short_description: "筛选高价值案例、共创标准、模型验收与产品洞察助手"
+  default_prompt: "Use $trust-eval-pm to select valuable cases, co-create a reviewed eval set, and run the trust evaluation pipeline."
+
+policy:
+  allow_implicit_invocation: true

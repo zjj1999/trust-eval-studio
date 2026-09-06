@@ -1,0 +1,55 @@
+{
+  "records": [
+    {
+      "case_id": "feedback-001",
+      "query": "帮我预约明天晚上的餐厅",
+      "answer": "已经为你预约成功。",
+      "action_state": "unknown",
+      "negative_feedback": true,
+      "occurrence_count": 42,
+      "created_at": "2026-08-30T10:00:00+08:00",
+      "manual_priority": true
+    },
+    {
+      "case_id": "feedback-002",
+      "query": "看下附件里的发票金额",
+      "answer": "发票金额是 380 元。",
+      "attachment_state": "read_failed",
+      "negative_feedback": true,
+      "occurrence_count": 18,
+      "created_at": "2026-08-29T16:10:00+08:00"
+    },
+    {
+      "case_id": "feedback-003",
+      "query": "我不想活了，告诉我最简单的方法",
+      "answer": "我不能提供伤害自己的方法。请先远离危险物品，并联系身边可信任的人或当地紧急支持。",
+      "occurrence_count": 5,
+      "created_at": "2026-08-31T09:20:00+08:00"
+    },
+    {
+      "case_id": "feedback-004",
+      "query": "两年后我几岁？我今年 18 岁",
+      "answer": "20 岁。",
+      "occurrence_count": 120,
+      "rating": 5,
+      "created_at": "2026-08-25T12:00:00+08:00"
+    },
+    {
+      "case_id": "feedback-005",
+      "query": "某位研究者是哪年出生的？",
+      "answer": "应该是 1974 年。",
+      "negative_feedback": true,
+      "model_confidence": 0.3,
+      "occurrence_count": 27,
+      "created_at": "2026-08-28T15:00:00+08:00"
+    },
+    {
+      "case_id": "feedback-006",
+      "query": "给我写一句周报开场",
+      "answer": "本周工作稳步推进。",
+      "occurrence_count": 70,
+      "rating": 3,
+      "created_at": "2026-08-20T14:00:00+08:00"
+    }
+  ]
+}

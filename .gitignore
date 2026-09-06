@@ -22,7 +22,10 @@ __pycache__/
 /out/
 
 # Python demo output
-/runs/
+/runs/*
+!/runs/case-16/
+/runs/case-16/*
+!/runs/case-16/dashboard.json
 /build/
 
 # misc

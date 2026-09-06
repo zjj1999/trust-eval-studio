@@ -7,19 +7,7 @@ from collections import Counter, defaultdict
 from pathlib import Path
 from typing import Any
 
-
-ISSUE_PLAYBOOK = {
-    "false_action_claim": ("工具编排 / 产品交互", "要求完成性措辞绑定成功 trace；失败时展示真实状态和下一步。"),
-    "fabricated_input_access": ("模型 / 输入协议", "显式传入附件可用性；缺失或读取失败时使用澄清模板。"),
-    "dangerous_guidance": ("安全策略", "增强高风险意图识别、即时风险响应与安全拒绝回归集。"),
-    "missing_expected_fact": ("模型 / 检索", "检查知识、检索证据与错误前提纠正；把该案例加入固定回归。"),
-    "insufficient_reference": ("评测数据", "由 PM 或领域专家补充事实 reference，再进入正式发布验收。"),
-    "missing_input_state": ("日志 / 评测数据", "采集附件状态，避免在上下文缺失时误判模型。"),
-    "forbidden_content": ("策略 / 模型", "定位禁止内容来源，并增加确定性拦截与相邻表达测试。"),
-    "low_helpfulness": ("模型 / 提示词", "检查拒答、截断或过短回复，补充任务完成度标准。"),
-    "missing_answer": ("服务稳定性", "检查模型调用、超时与结果落盘链路。"),
-    "judge_error": ("评测基础设施", "重试失败 Judge；记录模型、提示词、错误和未决状态。"),
-}
+from .insights import ISSUE_PLAYBOOK
 
 
 def write_results_csv(path: str | Path, results: list[dict[str, Any]]) -> None:
@@ -108,8 +96,27 @@ def algorithm_report(
     if not clusters:
         lines.append("| 无 | 0 | - | - | 保留当前结果作为回归基线 |")
     for code, count, case_ids in clusters:
-        owner, recommendation = ISSUE_PLAYBOOK.get(code, ("待 triage", "结合证据复核后分配责任层。"))
+        definition = ISSUE_PLAYBOOK.get(code, {})
+        owner = definition.get("owner", "待 triage")
+        recommendation = definition.get("action", "结合证据复核后分配责任层。")
         lines.append(f"| `{code}` | {count} | {', '.join(case_ids[:4])} | {owner} | {recommendation} |")
+    priorities = (insights or {}).get("top_priorities", [])
+    lines.extend(["", "## 优化任务卡", ""])
+    if not priorities:
+        lines.append("当前没有失败任务；保留本批结果作为后续回归基线。")
+    for index, priority in enumerate(priorities[:5], start=1):
+        lines.extend(
+            [
+                f"### P{index} · {priority.get('title', priority.get('issue_code', '待定义问题'))}",
+                "",
+                f"- **失败定义**：{priority.get('definition', '结合逐题证据补充定义')}",
+                f"- **影响 Case**：{', '.join(priority.get('case_ids', [])) or '-'}",
+                f"- **负责方向**：{priority.get('owner', '待产品与算法共同判断')}",
+                f"- **优化动作**：{priority.get('action', '结合证据完成归因')}",
+                f"- **完成标准**：{priority.get('success_criteria', '在固定回归集上验证问题已消失')}",
+                "",
+            ]
+        )
     lines.extend(
         [
             "",
@@ -176,16 +183,17 @@ def html_report(
     :root{{--ink:#102c2b;--muted:#61706e;--line:#d8e1de;--paper:#f7f7f2;--card:#fff;--teal:#0f766e;--red:#c2413a;--yellow:#b7791f;--green:#23815c;--unknown:#65727a}}
     *{{box-sizing:border-box}} body{{margin:0;background:radial-gradient(circle at 85% 0,#dceee8 0,transparent 30%),var(--paper);color:var(--ink);font:14px/1.55 ui-sans-serif,system-ui,-apple-system,"PingFang SC",sans-serif}}
     .wrap{{max-width:1180px;margin:auto;padding:38px 24px 64px}} header{{display:flex;justify-content:space-between;gap:24px;align-items:flex-start;margin-bottom:28px}} h1{{font-size:34px;line-height:1.1;margin:4px 0 10px;letter-spacing:-.03em}} .eyebrow{{color:var(--teal);font-weight:700;letter-spacing:.11em;text-transform:uppercase}} .muted{{color:var(--muted)}} .decision{{padding:11px 16px;border:1px solid var(--line);border-radius:999px;background:#fff;font-weight:800}} .decision.block{{color:var(--red);border-color:#edb9b5;background:#fff4f2}} .decision.pass{{color:var(--green)}}
-    .metrics{{display:grid;grid-template-columns:repeat(5,1fr);gap:12px;margin:22px 0}} .metric,.panel{{background:rgba(255,255,255,.88);border:1px solid var(--line);border-radius:16px;box-shadow:0 8px 30px rgba(22,54,50,.05)}} .metric{{padding:16px}} .metric strong{{display:block;font-size:27px;margin-top:3px}} .panel{{padding:18px;margin-top:14px}} .filters{{display:flex;gap:8px;flex-wrap:wrap;align-items:center}} button{{border:1px solid var(--line);background:#fff;border-radius:999px;padding:8px 12px;cursor:pointer;color:var(--ink)}} button.active{{background:var(--ink);color:#fff;border-color:var(--ink)}} select{{border:1px solid var(--line);border-radius:10px;padding:8px 10px;background:#fff;color:var(--ink)}}
+    .metrics{{display:grid;grid-template-columns:repeat(5,1fr);gap:12px;margin:22px 0}} .metric,.panel,.priority{{background:rgba(255,255,255,.88);border:1px solid var(--line);border-radius:16px;box-shadow:0 8px 30px rgba(22,54,50,.05)}} .metric{{padding:16px}} .metric strong{{display:block;font-size:27px;margin-top:3px}} .panel{{padding:18px;margin-top:14px}} .priority-grid{{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin:14px 0}} .priority{{padding:18px}} .priority h3{{margin:8px 0;font-size:17px}} .priority p{{margin:7px 0}} .priority .cases{{font-family:ui-monospace,SFMono-Regular,monospace;font-size:12px;color:var(--teal)}} .filters{{display:flex;gap:8px;flex-wrap:wrap;align-items:center}} button{{border:1px solid var(--line);background:#fff;border-radius:999px;padding:8px 12px;cursor:pointer;color:var(--ink)}} button.active{{background:var(--ink);color:#fff;border-color:var(--ink)}} select{{border:1px solid var(--line);border-radius:10px;padding:8px 10px;background:#fff;color:var(--ink)}}
     table{{width:100%;border-collapse:collapse;margin-top:12px}} th,td{{text-align:left;border-top:1px solid var(--line);padding:12px 10px;vertical-align:top}} th{{color:var(--muted);font-size:12px}} tr{{cursor:pointer}} tr:hover{{background:#f2f7f5}} .dot{{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:7px}} .green{{background:var(--green)}} .yellow{{background:var(--yellow)}} .red{{background:var(--red)}} .unknown{{background:var(--unknown)}} code{{font:12px ui-monospace,SFMono-Regular,monospace;background:#eef3f1;border-radius:6px;padding:2px 5px}}
     dialog{{width:min(760px,calc(100% - 32px));border:1px solid var(--line);border-radius:18px;padding:0;box-shadow:0 28px 80px rgba(13,42,39,.2)}} dialog::backdrop{{background:rgba(10,32,30,.35)}} .dialog-body{{padding:24px}} .close{{float:right}} .score-grid{{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin:18px 0}} .score{{border:1px solid var(--line);border-radius:12px;padding:12px}} .score b{{font-size:22px;display:block}} .copy{{white-space:pre-wrap;background:#f5f7f5;padding:12px;border-radius:10px}} ul{{padding-left:20px}} footer{{margin-top:24px;color:var(--muted);font-size:12px}}
-    @media(max-width:760px){{.metrics{{grid-template-columns:repeat(2,1fr)}} header{{display:block}} .decision{{display:inline-block;margin-top:14px}} .hide-mobile{{display:none}}}}
+    @media(max-width:760px){{.metrics,.priority-grid{{grid-template-columns:repeat(1,1fr)}} header{{display:block}} .decision{{display:inline-block;margin-top:14px}} .hide-mobile{{display:none}}}}
   </style>
 </head>
 <body><div class="wrap">
   <header><div><div class="eyebrow">TrustEval Studio · Run report</div><h1>先判断能不能上线，再解释为什么失败</h1><div class="muted" id="run-meta"></div></div><div id="decision" class="decision"></div></header>
   <section class="metrics" id="metrics"></section>
   <section class="panel"><div class="eyebrow">产品洞察 Agent</div><strong id="insight-summary"></strong></section>
+  <section class="priority-grid" id="priorities"></section>
   <section class="panel"><div class="filters"><strong>筛选</strong><button data-status="all" class="active">全部</button><button data-status="green">绿色</button><button data-status="yellow">黄色</button><button data-status="red">红色</button><button data-status="unknown">待复核</button><select id="category"><option value="all">全部场景</option></select></div>
     <table><thead><tr><th>案例</th><th>结果</th><th>场景</th><th>U / P / B</th><th class="hide-mobile">问题码</th><th class="hide-mobile">复核</th></tr></thead><tbody id="rows"></tbody></table>
   </section>
@@ -198,6 +206,7 @@ const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({{'&':'&amp;','<':'&lt;','>':'
 const s=DATA.summary,r=DATA.results;
 document.querySelector('#run-meta').textContent=`${{DATA.run.generated_at}} · ${{DATA.run.judge}} · ${{s.total}} 个案例`;
 document.querySelector('#insight-summary').textContent=DATA.insights.executive_summary||'暂无额外洞察';
+document.querySelector('#priorities').innerHTML=(DATA.insights.top_priorities||[]).slice(0,4).map((x,i)=>`<article class="priority"><div class="eyebrow">P${{i+1}} · ${{esc(x.issue_code)}}</div><h3>${{esc(x.title||x.issue_code)}}</h3><p class="muted">${{esc(x.definition||'')}}</p><p><strong>怎么改：</strong>${{esc(x.action||'')}}</p><p><strong>怎样算修好：</strong>${{esc(x.success_criteria||'')}}</p><p class="cases">${{(x.case_ids||[]).map(esc).join(' · ')}}</p></article>`).join('');
 const decision=document.querySelector('#decision'); decision.textContent=`${{s.release_decision.toUpperCase()}} · ${{s.release_reason}}`; decision.classList.add(s.release_decision);
 document.querySelector('#metrics').innerHTML=[['绿色通过',s.counts.green],['发布红线',s.redlines],['待复核',s.review_queue],['用户价值',s.dimension_averages.user_value??'—'],['产品可信',s.dimension_averages.product_trust??'—']].map(x=>`<div class="metric"><span class="muted">${{x[0]}}</span><strong>${{x[1]}}</strong></div>`).join('');
 const categories=[...new Set(r.map(x=>x.category_name))]; document.querySelector('#category').innerHTML+=[...categories].map(x=>`<option>${{esc(x)}}</option>`).join('');

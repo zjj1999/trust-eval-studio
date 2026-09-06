@@ -1,10 +1,8 @@
 from __future__ import annotations
 
 import argparse
-import hashlib
 import json
 import sys
-from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -14,12 +12,15 @@ from .evalset_builder import (
     TemplateEvalSetAgent,
     complete_evalset,
 )
-from .graders import CommandJudge, OpenAIJudge, aggregate_results, grade_case
+from .graders import CommandJudge, OpenAIJudge
+from .feedback import FileFeedbackSource, HttpFeedbackSource, SamplingPolicy, select_valuable_cases
 from .insights import CommandInsightAgent, OpenAIInsightAgent, ProductInsightAgent
 from .io import read_cases, read_jsonl, write_json, write_jsonl
-from .model_runner import CommandTargetModel, ExistingAnswerModel, HttpTargetModel, generate_batch
+from .model_runner import CommandTargetModel, ExistingAnswerModel, HttpTargetModel
+from .pipeline import dataset_hash, execute_evaluation
 from .reporting import write_reports
 from .rubric import apply_review, approve_all, write_review_csv
+from .service import serve
 
 
 def _workspace(value: str) -> Path:
@@ -29,8 +30,7 @@ def _workspace(value: str) -> Path:
 
 
 def _dataset_hash(cases: list[dict[str, Any]]) -> str:
-    stable = json.dumps(cases, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
-    return hashlib.sha256(stable.encode()).hexdigest()[:16]
+    return dataset_hash(cases)
 
 
 def _evalset_agent(name: str, command: str | None, model: str):
@@ -67,6 +67,51 @@ def prepare(
     }
     write_json(target / "manifest.json", manifest)
     return manifest
+
+
+def collect(
+    *,
+    workspace: str,
+    source_name: str = "file",
+    input_path: str | None = None,
+    endpoint: str | None = None,
+    api_key_env: str = "FEEDBACK_API_KEY",
+    since: str | None = None,
+    fetch_limit: int = 1000,
+    top_k: int = 50,
+    policy_name: str = "balanced",
+    max_per_category: int | None = None,
+    min_score: float = 0.0,
+    deduplicate: bool = True,
+) -> dict[str, Any]:
+    """Collect business feedback and produce a reviewable, high-value candidate pool."""
+
+    target = _workspace(workspace)
+    if source_name == "http":
+        if not endpoint:
+            raise ValueError("--source http 需要 --endpoint")
+        source = HttpFeedbackSource(endpoint=endpoint, api_key_env=api_key_env)
+    else:
+        if not input_path:
+            raise ValueError("--source file 需要 --input")
+        source = FileFeedbackSource(input_path)
+    inbox = source.fetch(since=since, limit=fetch_limit)
+    selected, report = select_valuable_cases(
+        inbox,
+        SamplingPolicy(
+            top_k=top_k,
+            preset=policy_name,
+            max_per_category=max_per_category,
+            min_score=min_score,
+            deduplicate=deduplicate,
+        ),
+    )
+    report["source"] = source.name
+    report["since"] = since
+    write_jsonl(target / "feedback-inbox.jsonl", inbox)
+    write_jsonl(target / "selected-cases.jsonl", selected)
+    write_json(target / "selection-report.json", report)
+    return report
 
 
 def review(workspace: str, review_file: str | None, approve_demo: bool, reviewer: str) -> dict[str, Any]:
@@ -116,10 +161,6 @@ def run(
 ) -> dict[str, Any]:
     target = _workspace(workspace)
     cases = read_jsonl(target / "cases.jsonl")
-    drafts = [case["case_id"] for case in cases if case.get("review", {}).get("status") != "approved"]
-    if drafts and not allow_draft:
-        preview = ", ".join(drafts[:5])
-        raise ValueError(f"有 {len(drafts)} 个标准未获 PM 批准（{preview}）。请先 review，或仅在调试时使用 --allow-draft")
     judge = None
     if judge_name == "openai":
         judge = OpenAIJudge(model=model)
@@ -142,23 +183,6 @@ def run(
         target_provider = CommandTargetModel(target_command)
     else:
         target_provider = ExistingAnswerModel()
-    dataset_sha256 = _dataset_hash(cases)
-    cases, model_outputs = generate_batch(cases, target_provider, batch_id)
-    write_jsonl(target / "model-outputs.jsonl", model_outputs)
-    results = [grade_case(case, judge) for case in cases]
-    summary = aggregate_results(results)
-    generated_at = datetime.now(timezone.utc).astimezone().isoformat(timespec="seconds")
-    run_meta = {
-        "generated_at": generated_at,
-        "judge": judge.name if judge else "deterministic-v1",
-        "model": model if judge_name == "openai" else None,
-        "target_model": target_provider.name,
-        "target_model_name": target_model or None,
-        "batch_id": model_outputs[0]["model_run"]["batch_id"] if model_outputs else batch_id,
-        "dataset_sha256": dataset_sha256,
-        "rubric_version": "three-lens-v1",
-        "scoring": "user_value/product_trust/business_acceptability each 0-2",
-    }
     if insight_name == "openai":
         insight_agent = OpenAIInsightAgent(model=insight_model)
     elif insight_name == "command":
@@ -167,21 +191,20 @@ def run(
         insight_agent = CommandInsightAgent(insight_command)
     else:
         insight_agent = ProductInsightAgent()
-    try:
-        insights = insight_agent.analyze(summary, results)
-    except Exception as exc:
-        insights = ProductInsightAgent().analyze(summary, results)
-        insights["agent_error"] = str(exc)
-    payload = {
-        "schema_version": "1.0",
-        "run": run_meta,
-        "summary": summary,
-        "insights": insights,
-        "results": results,
-    }
+    payload, model_outputs = execute_evaluation(
+        cases,
+        target_model=target_provider,
+        judge=judge,
+        insight_agent=insight_agent,
+        allow_draft=allow_draft,
+        batch_id=batch_id,
+        target_model_name=target_model or None,
+        judge_model=model if judge_name == "openai" else None,
+    )
+    write_jsonl(target / "model-outputs.jsonl", model_outputs)
     write_json(target / "results.json", payload)
-    write_json(target / "insights.json", insights)
-    write_reports(target, summary, results, run_meta, insights)
+    write_json(target / "insights.json", payload["insights"])
+    write_reports(target, payload["summary"], payload["results"], payload["run"], payload["insights"])
     return payload
 
 
@@ -210,15 +233,34 @@ def regenerate_report(
 
 
 def demo(workspace: str, project_root: Path) -> dict[str, Any]:
-    raw = project_root / "examples" / "raw" / "demo.csv"
-    prepare(str(raw), workspace)
-    review(workspace, None, True, "demo-pm")
-    return run(workspace, "deterministic", None, "gpt-5.4-mini", False)
+    target = _workspace(workspace)
+    raw = project_root / "examples" / "raw" / "feedback.json"
+    collect(workspace=str(target), input_path=str(raw), top_k=4, policy_name="balanced")
+    prepare(str(target / "selected-cases.jsonl"), str(target))
+    review(str(target), None, True, "demo-pm")
+    return run(str(target), "deterministic", None, "gpt-5.4-mini", False)
 
 
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="trust-eval", description="可信度评测流水线：导入、共创标准、混合评分与报告")
     sub = parser.add_subparsers(dest="command", required=True)
+
+    collect_parser = sub.add_parser("collect", help="业务数据回流：接入反馈源并筛选高价值、典型 Case")
+    collect_parser.add_argument("--workspace", required=True)
+    collect_parser.add_argument("--source", choices=["file", "http"], default="file")
+    collect_parser.add_argument("--input", help="file 数据源路径")
+    collect_parser.add_argument("--endpoint", help="业务回流 HTTP Endpoint")
+    collect_parser.add_argument("--api-key-env", default="FEEDBACK_API_KEY")
+    collect_parser.add_argument("--since", help="传给业务回流接口的 ISO 时间游标")
+    collect_parser.add_argument("--fetch-limit", type=int, default=1000)
+    collect_parser.add_argument("--top-k", type=int, default=50)
+    collect_parser.add_argument(
+        "--policy", choices=["balanced", "risk-first", "representative"], default="balanced"
+    )
+    collect_parser.add_argument("--max-per-category", type=int)
+    collect_parser.add_argument("--min-score", type=float, default=0.0)
+    collect_parser.add_argument("--keep-duplicates", action="store_true")
+
     for command, help_text in (
         ("build", "评测集共创：标准化数据并由 Agent 补齐 ground truth 与 rubric"),
         ("prepare", "兼容命令：等同 build"),
@@ -265,13 +307,35 @@ def _parser() -> argparse.ArgumentParser:
 
     demo_parser = sub.add_parser("demo", help="运行内置的非敏感演示集")
     demo_parser.add_argument("--workspace", default="examples/workspace")
+
+    serve_parser = sub.add_parser("serve", help="启动给 PM 工具和内部平台调用的本地 HTTP 服务")
+    serve_parser.add_argument("--host", default="127.0.0.1")
+    serve_parser.add_argument("--port", type=int, default=8787)
+    serve_parser.add_argument("--token-env", default="TRUST_EVAL_API_TOKEN")
+    serve_parser.add_argument("--cors-origin")
+    serve_parser.add_argument("--max-body-mb", type=int, default=10)
     return parser
 
 
 def main(argv: list[str] | None = None) -> None:
     args = _parser().parse_args(argv)
     try:
-        if args.command in {"prepare", "build"}:
+        if args.command == "collect":
+            payload = collect(
+                workspace=args.workspace,
+                source_name=args.source,
+                input_path=args.input,
+                endpoint=args.endpoint,
+                api_key_env=args.api_key_env,
+                since=args.since,
+                fetch_limit=args.fetch_limit,
+                top_k=args.top_k,
+                policy_name=args.policy,
+                max_per_category=args.max_per_category,
+                min_score=args.min_score,
+                deduplicate=not args.keep_duplicates,
+            )
+        elif args.command in {"prepare", "build"}:
             payload = prepare(
                 args.input,
                 args.workspace,
@@ -306,6 +370,15 @@ def main(argv: list[str] | None = None) -> None:
                 args.insight_command,
                 args.insight_model,
             )
+        elif args.command == "serve":
+            serve(
+                host=args.host,
+                port=args.port,
+                token_env=args.token_env,
+                cors_origin=args.cors_origin,
+                max_body_bytes=args.max_body_mb * 1024 * 1024,
+            )
+            return
         else:
             project_root = Path(__file__).resolve().parents[2]
             payload = demo(args.workspace, project_root)

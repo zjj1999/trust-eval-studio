@@ -13,9 +13,9 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: 'TrustEval Studio · 多轮对话可信度评测',
+  title: '模型可信度评测 · 16 题基线',
   description:
-    '面向产品经理与算法团队的数据集处理、自动评测、Badcase 分析与可视化工作台。',
+    '面向模型发布判断、能力诊断与逐题证据分析的可信度评测报告。',
 };
 
 export default function RootLayout({
