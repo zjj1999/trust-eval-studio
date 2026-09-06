@@ -3,7 +3,7 @@
 set -euo pipefail
 
 PROJECT_DIR="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
-WORKSPACE_DIR="$PROJECT_DIR/runs/interview-demo"
+WORKSPACE_DIR="$PROJECT_DIR/runs/team-demo"
 
 if ! command -v python3 >/dev/null 2>&1; then
   echo "TrustEval Studio 需要 Python 3.9 或更高版本。" >&2
