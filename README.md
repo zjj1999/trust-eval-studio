@@ -43,13 +43,13 @@ python -m pip install -e .
 ./demo.sh
 ```
 
-结果位于 `runs/interview-demo/`，其中 `report.html` 可直接打开查看。
+结果位于 `runs/team-demo/`，其中 `report.html` 可直接打开查看。
 
 ## 给 PM 的三种使用方式
 
 ### 方式 A：直接让 Codex 操作（推荐）
 
-仓库内置 [`trust-eval-pm`](skills/trust-eval-pm/SKILL.md) Skill。面试官或团队 PM 可以在 Codex 中说：
+仓库内置 [`trust-eval-pm`](skills/trust-eval-pm/SKILL.md) Skill。团队 PM 可以在 Codex 中说：
 
 > 从 `zjj1999/trust-eval-studio` 安装 `skills/trust-eval-pm`，然后用 `$trust-eval-pm` 从这份模型反馈里挑选 50 个最值得评测的 Case，和我共创标准；标准确认后接入模型 Endpoint 跑评测，并告诉我能不能发布、优先改什么。
 
