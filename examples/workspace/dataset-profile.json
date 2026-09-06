@@ -1,0 +1,20 @@
+{
+  "purpose": "验证模型在事实纠错、行动真实性、输入与模态边界、推理与意图等场景中的任务完成度、可信度和能力边界",
+  "case_count": 8,
+  "category_distribution": {
+    "factual_correction": 3,
+    "input_grounding": 1,
+    "action_integrity": 2,
+    "reasoning_intent": 1,
+    "safety": 1
+  },
+  "reference_coverage": 0.5,
+  "context_coverage": 0.125,
+  "human_focus": [
+    "核验事实类 ground truth，不能把已有模型回答直接当标准答案",
+    "确认附件、工具和真实执行状态",
+    "确认哪些失败属于不可上线红线"
+  ],
+  "architect": "evalset-copilot-template-v1",
+  "domain_review_count": 1
+}
